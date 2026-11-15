@@ -12,16 +12,17 @@ You describe the trip you want (destination, dates, budget, interests), and a te
 
 Most AI agent projects rely on frameworks that hide how agents actually work. This project builds everything from scratch using **plain Python functions** and direct calls to a Large Language Model (LLM), to show the core ideas behind AI agents:
 
-- **Agents as functions:** each agent is a Python function with its own system prompt and responsibility.
-- **Tool calling:** agents can call Python functions (tools) to get information or do calculations.
-- **Multi-agent orchestration:** a coordinator agent splits the user's request into tasks, sends each task to the right specialist agent, and combines their results.
-- **No hidden magic:** the agent loop, message history, and tool handling are all written by hand.
+- **Agents as simple classes:** each agent is a small Python object with its own system prompt (role) and a `run(task, context)` method.
+- **Multi-agent orchestration:** an orchestrator splits the user's request into tasks, sends each task to the right specialist agent, and combines their results.
+- **Shared memory:** every agent sees the trip request plus the work of the agents before it.
+- **Critic loop:** a reviewer agent checks the final plan and asks for fixes until it approves.
+- **No hidden magic:** planning, hand-offs, memory, and error handling are all written by hand.
 
 The LLM is accessed through the **[Groq API](https://console.groq.com/)** for fast inference.
 
 ---
 
-## 🤖 Planned Agents
+## 🤖 Agents
 
 | Agent | Responsibility |
 |---|---|
@@ -177,10 +178,22 @@ The tests use a fake LLM, so they are free, fast and need no internet connection
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `GROQ_MODEL` | `openai/gpt-oss-120b` | Model to use |
+| `GROQ_MODEL` | `openai/gpt-oss-120b` | Main model |
+| `GROQ_FALLBACK_MODEL` | `llama-3.3-70b-versatile` | Used automatically when the main model hits a rate limit (`none` disables it) |
+| `GROQ_REASONING_EFFORT` | `low` | `low` / `medium` / `high`, for gpt-oss models only. Lower uses far fewer tokens |
 | `MAX_REVISIONS` | `2` | Reviewer → writer fix rounds (0 disables the review) |
 | `MAX_STEPS` | `8` | Maximum steps the planner may create |
-| `MAX_RETRIES` | `2` | Automatic retries for rate limits / network errors |
+| `MAX_RETRIES` | `3` | Automatic retries for rate limits / network errors |
+
+On Streamlit Cloud, add these under **Settings → Secrets** instead of `.env`.
+
+### Groq free-plan limits
+
+Groq's free plan limits tokens **per minute** and **per day** for each model ([see your limits](https://console.groq.com/settings/limits)). One plan uses roughly 15–20k tokens across 6–8 requests. To stay within the limits, the app:
+- keeps every request small (the largest is about 4k tokens) with short, capped agent replies
+- uses low reasoning effort on gpt-oss models
+- waits and retries automatically when Groq says to slow down
+- switches to the fallback model if the main model's limit is reached
 
 ---
 
@@ -195,6 +208,30 @@ A full run usually takes 1–2 minutes (5–7 LLM calls).
 
 ---
 
+## 🚀 Deployment (Streamlit Community Cloud)
+
+The app is deployed for free on [Streamlit Community Cloud](https://share.streamlit.io). Vercel is not suitable because it runs short-lived serverless functions, while Streamlit needs a long-running server and a single plan takes 1–2 minutes.
+
+1. Push your code to GitHub (make sure `.env` is **not** committed).
+2. Sign in at [share.streamlit.io](https://share.streamlit.io) with GitHub and click **Create app**.
+3. Fill in:
+   - **Repository:** `mahnooriqbal212/traveller-planner-agent`
+   - **Branch:** `main`
+   - **Main file path:** `ui/app.py`
+4. Open **Advanced settings**:
+   - **Python version:** 3.12 or 3.13
+   - **Secrets:** add your key in TOML format:
+     ```toml
+     GROQ_API_KEY = "your_groq_api_key_here"
+     ```
+5. Click **Deploy**. The app redeploys automatically every time you push to `main`.
+
+> 💡 No code changes are needed: Streamlit exposes top-level secrets as environment variables, which is where the app reads `GROQ_API_KEY` from.
+>
+> ⚠️ A public app uses **your** Groq quota. Consider making the app private and inviting specific viewers from the app's settings.
+
+---
+
 ## 🗺️ Roadmap
 
 - [x] Project setup (Groq client, environment config)
@@ -205,6 +242,7 @@ A full run usually takes 1–2 minutes (5–7 LLM calls).
 - [x] Error handling (API errors, bad JSON, failed workers)
 - [x] Streamlit UI and command-line interface
 - [x] Automated tests
+- [ ] Deploy to Streamlit Community Cloud
 - [ ] Tool calling with pure Python functions (e.g. live weather / currency rates)
 
 ---
@@ -213,10 +251,13 @@ A full run usually takes 1–2 minutes (5–7 LLM calls).
 
 | Problem | Solution |
 |---|---|
-| `GROQ_API_KEY not found` | Make sure `.env` exists in the project folder and contains your key |
-| `model not found` error | The model name may have changed. Check [console.groq.com/docs/models](https://console.groq.com/docs/models) and update `MODEL` in `config.py` |
+| `GROQ_API_KEY not found` | Locally: make sure `.env` exists in the project folder and contains your key. On Streamlit Cloud: add it under **Settings → Secrets** |
+| `model not found` error | The model name may have changed. Check [console.groq.com/docs/models](https://console.groq.com/docs/models) and set `GROQ_MODEL` in `.env` (or in Streamlit secrets) |
+| `running scripts is disabled` (Windows) | Run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, then activate the venv again |
 | `ModuleNotFoundError` | Activate the virtual environment, then run `pip install -r requirements.txt` |
-| `Groq rate limit reached` | The free tier limits requests per minute. Wait a minute and try again |
+| `Groq rate limit reached` | You hit the per-minute limit. Wait a minute and try again |
+| `Groq's daily limit ... has been reached` | The daily token quota for that model is used up. Wait for the time shown, or set `GROQ_MODEL` to a different model |
+| `request was too large` (HTTP 413) | A single request exceeded your plan's per-minute token limit. Try a shorter trip or a model with higher limits |
 | `ModuleNotFoundError: travel_planner` | Run commands from the project root folder |
 
 ---

@@ -4,6 +4,8 @@ touching any logic.
 Each worker is described by a ``WorkerSpec``:
   * ``role``        -> the worker's system prompt (how it behaves)
   * ``description`` -> what the planner is told the worker can do
+  * ``max_tokens``  -> cap on the reply length. Short replies keep each request
+                       under Groq's free-plan tokens-per-minute limit.
 """
 
 from dataclasses import dataclass
@@ -15,6 +17,7 @@ class WorkerSpec:
     name: str
     role: str
     description: str
+    max_tokens: int = 1500
 
 
 RESEARCHER = WorkerSpec(
@@ -28,7 +31,8 @@ RESEARCHER = WorkerSpec(
         "traveller's interests (with the area each is in), local dishes to try, typical "
         "weather for the travel dates, cultural etiquette, safety and visa notes. "
         "Use concise bullet points. Do not write an itinerary. If you are unsure about "
-        "a fact (opening hours, prices, entry rules), say so instead of inventing it."
+        "a fact (opening hours, prices, entry rules), say so instead of inventing it. "
+        "Keep it under 300 words."
     ),
 )
 
@@ -42,7 +46,7 @@ LOGISTICS = WorkerSpec(
         "cover: how to reach the destination from the origin (if given), the best ways "
         "to get around locally, and 2-3 recommended areas to stay with the type of "
         "accommodation that suits the budget and travel style. Give rough price ranges "
-        "and label them as estimates. Use concise bullet points."
+        "and label them as estimates. Use concise bullet points. Keep it under 250 words."
     ),
 )
 
@@ -57,7 +61,7 @@ BUDGET = WorkerSpec(
         "local transport, activities/entry fees, and a 10% buffer. Show per-day and "
         "total amounts as a markdown table. Compare the total with the stated budget and "
         "say clearly whether it fits; if not, suggest specific ways to cut costs. "
-        "All figures are estimates, so say so."
+        "All figures are estimates, so say so. Keep the text outside the table under 120 words."
     ),
 )
 
@@ -76,8 +80,10 @@ WRITER = WorkerSpec(
         "with Morning / Afternoon / Evening bullets and where to eat\n"
         "## Where to stay\n## Getting around\n## Budget summary (short table)\n"
         "## Tips & things to know\n"
-        "Include exactly one section per trip day. Be concise and specific."
+        "Include exactly one section per trip day. Be concise and specific: "
+        "at most about 120 words per day."
     ),
+    max_tokens=4000,
 )
 
 REVIEWER = WorkerSpec(
@@ -92,13 +98,17 @@ REVIEWER = WorkerSpec(
         "4. The plan is realistic (no impossible travel times, sensible pacing).\n"
         "5. All required sections are present.\n"
         "If everything passes, reply with the single word APPROVED. Otherwise reply with "
-        "a short numbered list of specific fixes. Do not rewrite the plan yourself."
+        "a short numbered list of specific fixes (at most 5). Do not rewrite the plan yourself."
     ),
+    max_tokens=800,
 )
 
 # Workers the planner may assign steps to (the reviewer runs separately).
 WORKER_SPECS: tuple[WorkerSpec, ...] = (RESEARCHER, LOGISTICS, BUDGET, WRITER)
 FINAL_WORKER = WRITER.key
+
+
+PLANNER_MAX_TOKENS = 1000
 
 
 def planner_prompt(specs: tuple[WorkerSpec, ...] = WORKER_SPECS, max_steps: int = 8) -> str:

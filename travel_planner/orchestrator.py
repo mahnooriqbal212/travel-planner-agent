@@ -148,7 +148,9 @@ class TravelPlannerOrchestrator:
                 draft = self.team.workers[FINAL_WORKER].run(
                     f"Revise the travel plan to fix these issues:\n{feedback}\n\n"
                     "Return the complete revised plan, not just the changes.",
-                    f"[Trip Request]\n{goal}\n\n[Research]\n{context}\n\n[Current Draft]\n{draft}",
+                    # The draft already contains the research, so we don't resend the full
+                    # context; that would make the request too large for free-plan limits (HTTP 413).
+                    f"[Trip Request]\n{goal}\n\n[Current Draft]\n{draft}",
                 )
                 self._emit(EventType.REVISION, f"Writer revised the plan (round {round_no}).")
             except LLMError as e:

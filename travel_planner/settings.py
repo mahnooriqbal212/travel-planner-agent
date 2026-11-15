@@ -14,6 +14,10 @@ from dotenv import load_dotenv
 from .exceptions import ConfigError
 
 DEFAULT_MODEL = "openai/gpt-oss-120b"
+# Groq rate limits are per model, so a second model gives extra capacity
+# when the main one hits its limit. Set GROQ_FALLBACK_MODEL=none to disable.
+DEFAULT_FALLBACK_MODEL = "llama-3.3-70b-versatile"
+REASONING_EFFORTS = ("low", "medium", "high")
 _PLACEHOLDER_KEYS = {"", "paste_your_key_here", "your_groq_api_key_here"}
 
 
@@ -22,8 +26,10 @@ class Settings:
     # repr=False keeps the secret key out of logs and error messages.
     api_key: str = field(repr=False)
     model: str = DEFAULT_MODEL
+    fallback_model: str = DEFAULT_FALLBACK_MODEL  # "" = no fallback
+    reasoning_effort: str = "low"  # gpt-oss only: less hidden "thinking" = fewer tokens
     timeout: float = 90.0      # seconds per LLM request
-    max_retries: int = 2       # automatic retries by the Groq SDK (rate limits, 5xx, network)
+    max_retries: int = 3       # automatic retries by the Groq SDK (rate limits, 5xx, network)
     max_revisions: int = 2     # reviewer -> writer fix rounds
     max_steps: int = 8         # cap on planner steps (controls cost)
 
@@ -51,10 +57,20 @@ def load_settings() -> Settings:
             "Groq key in it (get one at https://console.groq.com/keys)."
         )
 
+    fallback = os.getenv("GROQ_FALLBACK_MODEL", "").strip() or DEFAULT_FALLBACK_MODEL
+    if fallback.lower() == "none":
+        fallback = ""
+
+    effort = os.getenv("GROQ_REASONING_EFFORT", "").strip().lower() or "low"
+    if effort not in REASONING_EFFORTS:
+        raise ConfigError(f"GROQ_REASONING_EFFORT must be one of {', '.join(REASONING_EFFORTS)}.")
+
     return Settings(
         api_key=api_key,
         model=os.getenv("GROQ_MODEL", "").strip() or DEFAULT_MODEL,
-        max_retries=_env_int("MAX_RETRIES", 2, 0, 5),
+        fallback_model=fallback,
+        reasoning_effort=effort,
+        max_retries=_env_int("MAX_RETRIES", 3, 0, 5),
         max_revisions=_env_int("MAX_REVISIONS", 2, 0, 5),
         max_steps=_env_int("MAX_STEPS", 8, 2, 12),
     )

@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from .exceptions import LLMError
 from .llm import LLMClient
 from .models import Step
-from .prompts import FINAL_WORKER, WORKER_SPECS, planner_prompt
+from .prompts import FINAL_WORKER, PLANNER_MAX_TOKENS, WORKER_SPECS, planner_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -89,13 +89,13 @@ class Planner:
 
     def _ask(self, goal: str) -> str:
         try:
-            return self._llm.chat(self._system, goal, json_mode=True)
+            return self._llm.chat(self._system, goal, json_mode=True, max_tokens=PLANNER_MAX_TOKENS)
         except LLMError as e:
             if e.fatal:
                 raise
             # Some models/providers reject JSON mode; ask again as plain text.
             logger.info("JSON-mode planning failed (%s); retrying without JSON mode.", e)
-            return self._llm.chat(self._system, goal)
+            return self._llm.chat(self._system, goal, max_tokens=PLANNER_MAX_TOKENS)
 
     def parse_steps(self, raw: str) -> list[Step]:
         """Turn the raw LLM reply into a clean list of Steps (may be empty)."""

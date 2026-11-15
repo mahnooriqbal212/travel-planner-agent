@@ -59,6 +59,10 @@ def test_revision_loop_until_approved(trip):
     result, _ = run(trip, llm)
     assert result.final_plan == "DRAFT v2"
     assert [r.approved for r in result.reviews] == [False, True]
+    # The revision request carries the draft + feedback, not the full research (keeps it small).
+    revision_prompt = llm.calls_to("Itinerary Writer")[1]["user"]
+    assert "DRAFT v1" in revision_prompt and "Add day 4" in revision_prompt
+    assert "research notes" not in revision_prompt
 
 
 def test_stops_after_max_revisions(trip):

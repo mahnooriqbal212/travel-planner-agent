@@ -22,8 +22,8 @@ class FakeLLM:
         self.routes = routes
         self.calls: list[dict] = []
 
-    def chat(self, system: str, user: str, *, json_mode: bool = False) -> str:
-        self.calls.append({"system": system, "user": user, "json_mode": json_mode})
+    def chat(self, system: str, user: str, *, json_mode: bool = False, max_tokens: int | None = None) -> str:
+        self.calls.append({"system": system, "user": user, "json_mode": json_mode, "max_tokens": max_tokens})
         for key, reply in self.routes.items():
             if key in system:
                 if isinstance(reply, list):

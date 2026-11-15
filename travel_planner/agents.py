@@ -19,12 +19,13 @@ class Agent:
         self.name = spec.name
         self.description = spec.description
         self.system = f"You are the {spec.name}. {spec.role}"
+        self.max_tokens = spec.max_tokens
         self._llm = llm
 
     def run(self, task: str, context: str = "") -> str:
         """Do one task, using the shared context produced so far."""
         prompt = f"Context:\n{context or '(none yet)'}\n\nTask: {task}"
-        return self._llm.chat(self.system, prompt)
+        return self._llm.chat(self.system, prompt, max_tokens=self.max_tokens)
 
     def __repr__(self) -> str:
         return f"Agent({self.key!r})"
