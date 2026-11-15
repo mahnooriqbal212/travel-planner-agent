@@ -4,7 +4,7 @@ A **multi-agent AI travel planner** built with **pure Python**, with no agent fr
 
 You describe the trip you want (destination, dates, budget, interests), and a team of specialised AI agents works together to put together a complete travel plan.
 
-> 🚧 **Status: In development.** This README will be updated as features are completed.
+> 🚧 **Status: Working version.** This README will be updated as the project evolves.
 
 ---
 
@@ -25,24 +25,30 @@ The LLM is accessed through the **[Groq API](https://console.groq.com/)** for fa
 
 | Agent | Responsibility |
 |---|---|
-| **Coordinator Agent** | Understands the user's request, delegates tasks to other agents, and combines the final plan |
-| **Destination Agent** | Suggests places to visit, attractions, and local tips |
-| **Itinerary Agent** | Builds a day-by-day schedule for the trip |
-| **Budget Agent** | Estimates costs (stay, food, transport, activities) and keeps the plan within budget |
+| **Orchestrator (Planner)** | Reads the trip request and splits it into steps (JSON), choosing which worker does what |
+| **Destination Researcher** | Attractions matching your interests, local food, weather, etiquette, safety & visa notes |
+| **Logistics Planner** | Getting there, getting around, and the best areas/accommodation for your budget |
+| **Budget Analyst** | Cost breakdown table (stay, food, transport, activities, 10% buffer) and whether it fits your budget |
+| **Itinerary Writer** | Combines everything into the final day-by-day plan; also fixes issues the reviewer finds |
+| **Quality Reviewer** | Critic: checks the plan against the request; replies `APPROVED` or lists fixes |
 
-*(Agents may be added or changed as the project develops.)*
-
-### How it works (planned flow)
+### How it works
 
 ```
-User request
-     │
-     ▼
-Coordinator Agent ──► Destination Agent
-     │            ──► Itinerary Agent
-     │            ──► Budget Agent
-     ▼
-Final travel plan
+Trip form (Streamlit / CLI)
+        │  TripRequest — validated in Python, days & budget/day computed in Python
+        ▼
+ Orchestrator ──► plan: [{"worker": ..., "task": ...}, ...]
+        │
+        ├─► Destination Researcher ─┐
+        ├─► Logistics Planner ──────┤  each worker sees the shared context
+        ├─► Budget Analyst ─────────┤  (trip request + all earlier outputs)
+        └─► Itinerary Writer ◄──────┘
+                    │ draft
+                    ▼
+            Quality Reviewer ── APPROVED ──► Final plan
+                    │ fixes
+                    └──► Itinerary Writer (max 2 revision rounds)
 ```
 
 ---
@@ -52,6 +58,8 @@ Final travel plan
 - **Python 3.10+** (developed on Python 3.13)
 - **[Groq](https://pypi.org/project/groq/)**: Python SDK for the Groq LLM API
 - **[python-dotenv](https://pypi.org/project/python-dotenv/)**: loads the API key from a `.env` file
+- **[Streamlit](https://streamlit.io/)**: web UI
+- **[pytest](https://pytest.org/)**: tests
 - **Model:** `openai/gpt-oss-120b` (via Groq)
 
 ---
@@ -60,17 +68,27 @@ Final travel plan
 
 ```
 TravelPlannerAgent/
-├── agent.py           # Agent logic (agents, tools, orchestration)
-├── config.py          # Loads API key, creates Groq client, sets model name
-├── requirements.txt   # Python dependencies
-├── .env.example       # Template for environment variables
-├── .env               # Your real API key (NOT committed to Git)
-├── .gitignore
-├── LICENSE
+├── travel_planner/        # Core logic (no UI code)
+│   ├── settings.py        # Loads .env settings safely (raises ConfigError, never exits)
+│   ├── exceptions.py      # Custom error classes
+│   ├── llm.py             # Groq wrapper: translates API errors into friendly messages
+│   ├── models.py          # TripRequest (validation + budget maths) and result classes
+│   ├── prompts.py         # Every agent's system prompt + the planner prompt
+│   ├── agents.py          # Agent class and build_team()
+│   ├── planner.py         # Orchestrator planning step with JSON fallbacks
+│   ├── orchestrator.py    # Runs plan → workers → review loop, emits progress events
+│   └── export.py          # Markdown export for download/saving
+├── ui/                    # Streamlit UI only
+│   ├── app.py             # Entry point: streamlit run ui/app.py
+│   └── components.py      # Form, live progress, result tabs
+├── tests/                 # pytest suite (uses a fake LLM; no API key or internet needed)
+├── main.py                # Command-line version
+├── agent_tech.py          # Class example this project is based on
+├── config.py              # Used by agent_tech.py
+├── requirements.txt
+├── .env.example
 └── README.md
 ```
-
-*(Structure will be updated as new files are added.)*
 
 ---
 
@@ -136,29 +154,58 @@ GROQ_API_KEY=your_groq_api_key_here
 
 ### 6. Run the project
 
+**Web UI (Streamlit):**
 ```bash
-python agent.py
+streamlit run ui/app.py
 ```
+It opens at http://localhost:8501.
 
-*(Usage instructions will be added once the agent is complete.)*
+**Command line:**
+```bash
+python main.py
+```
+Plans made from the CLI are also saved to the `output/` folder.
+
+### 7. Run the tests
+
+```bash
+pytest
+```
+The tests use a fake LLM, so they are free, fast and need no internet connection.
+
+### Optional settings (`.env`)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `GROQ_MODEL` | `openai/gpt-oss-120b` | Model to use |
+| `MAX_REVISIONS` | `2` | Reviewer → writer fix rounds (0 disables the review) |
+| `MAX_STEPS` | `8` | Maximum steps the planner may create |
+| `MAX_RETRIES` | `2` | Automatic retries for rate limits / network errors |
 
 ---
 
 ## 💡 Usage
 
-*Coming soon: example prompts and sample output.*
+1. Enter your destination, dates, number of travelers, budget, travel style and interests.
+2. Click **✨ Plan my trip** and watch each agent hand off to the next in the progress box.
+3. Read the final plan, look at each agent's raw work in the tabs, and see every hand-off and review in **🧠 Agent log**.
+4. Download the plan as a Markdown file.
+
+A full run usually takes 1–2 minutes (5–7 LLM calls).
 
 ---
 
 ## 🗺️ Roadmap
 
 - [x] Project setup (Groq client, environment config)
-- [ ] Basic agent loop (LLM call + message history)
-- [ ] Tool calling with pure Python functions
-- [ ] Specialist agents (Destination, Itinerary, Budget)
-- [ ] Coordinator agent for multi-agent orchestration
-- [ ] Command-line interface for user input
-- [ ] Final travel plan output
+- [x] Agent class with role-based system prompts
+- [x] Orchestrator that plans steps as JSON
+- [x] Specialist workers (Researcher, Logistics, Budget, Writer)
+- [x] Reviewer critic loop with revisions
+- [x] Error handling (API errors, bad JSON, failed workers)
+- [x] Streamlit UI and command-line interface
+- [x] Automated tests
+- [ ] Tool calling with pure Python functions (e.g. live weather / currency rates)
 
 ---
 
@@ -169,6 +216,8 @@ python agent.py
 | `GROQ_API_KEY not found` | Make sure `.env` exists in the project folder and contains your key |
 | `model not found` error | The model name may have changed. Check [console.groq.com/docs/models](https://console.groq.com/docs/models) and update `MODEL` in `config.py` |
 | `ModuleNotFoundError` | Activate the virtual environment, then run `pip install -r requirements.txt` |
+| `Groq rate limit reached` | The free tier limits requests per minute. Wait a minute and try again |
+| `ModuleNotFoundError: travel_planner` | Run commands from the project root folder |
 
 ---
 

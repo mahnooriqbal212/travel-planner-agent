@@ -1,2 +1,9 @@
-groq
-dotenv
+# Core
+groq>=0.30
+python-dotenv>=1.0
+
+# UI
+streamlit>=1.50
+
+# Testing
+pytest>=8.0
